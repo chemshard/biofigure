@@ -164,11 +164,19 @@ def search_pmc(query, max_results=8):
 # ─────────────────────────────────────────────────────────────
 
 EFETCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
+
+# Matches full (https://) and protocol-relative (//cdn...) blob URLs.
+# Hex segment lengths are relaxed — PMC CDN path structure varies by article vintage.
 _BLOB_RE   = re.compile(
-    r'https?://cdn\.ncbi\.nlm\.nih\.gov/pmc/blobs/'
-    r'[0-9a-f]{4}/\d+/[0-9a-f]{8,}/[^\s"\'<>&?#]+',
+    r'(?:https?:)?//cdn\.ncbi\.nlm\.nih\.gov/pmc/blobs/'
+    r'[0-9a-f]+/\d+/[0-9a-f]+/[^\s"\'<>&?#]+',
     re.I,
 )
+
+
+def _normalize_blob_url(url):
+    """Ensure blob URL has an explicit https: scheme."""
+    return url if url.startswith("http") else "https:" + url
 
 
 def _strip_img_ext(s):
@@ -176,56 +184,87 @@ def _strip_img_ext(s):
     return re.sub(r'(\.[a-z]{2,4})+$', '', s, flags=re.I)
 
 
+def _scan_html_for_blobs(html):
+    """
+    Scan a page of HTML for CDN blob URLs. Returns {stem: url}.
+
+    Pass 1: <script type="application/json"> blocks — fastest, most reliable.
+    Pass 2: all other <script> tags (plain JS / webpack bundles).
+    Pass 3: <img> and <source> attributes (src, data-src, data-lazy-src, srcset).
+    Pass 4: full-page regex sweep — last resort.
+    """
+    blob_map = {}
+
+    def _add(url):
+        blob_url = _normalize_blob_url(url)
+        stem = _strip_img_ext(blob_url.rstrip("/").split("/")[-1])
+        if stem and stem not in blob_map:
+            blob_map[stem] = blob_url
+
+    soup = BeautifulSoup(html, "lxml")
+
+    # Pass 1: typed JSON script blocks
+    for script in soup.find_all("script", type="application/json"):
+        for m in _BLOB_RE.finditer(script.string or ""):
+            _add(m.group(0))
+
+    # Pass 2: untyped / text/javascript script blocks
+    if not blob_map:
+        for script in soup.find_all("script"):
+            if script.get("type", "").lower() in ("", "text/javascript"):
+                for m in _BLOB_RE.finditer(script.string or ""):
+                    _add(m.group(0))
+
+    # Pass 3: img / source element attributes
+    if not blob_map:
+        for tag in soup.find_all(["img", "source"]):
+            for attr in ("src", "data-src", "data-lazy-src", "srcset"):
+                for m in _BLOB_RE.finditer(tag.get(attr, "")):
+                    _add(m.group(0))
+
+    # Pass 4: full-page regex sweep
+    if not blob_map:
+        for m in _BLOB_RE.finditer(html):
+            _add(m.group(0))
+
+    return blob_map
+
+
 def scrape_blob_urls(pmc_id):
     """
     Fetch the PMC article page (static HTML) and return a dict of
-    { stem → blob_url } by:
-      1. Parsing the inline <script id="article-page-data"> JSON block.
-      2. Regex-scanning the entire HTML for any CDN blob URL as a fallback.
+    { stem -> blob_url }.
+
+    Tries two pages in order, stopping as soon as any blob URLs are found:
+      1. Main article page  -- new-renderer articles embed all blob URLs here.
+      2. /figures/ gallery  -- server-rendered gallery page; reliably contains
+                               static blob URLs for articles whose main page
+                               loads images entirely via JavaScript.
 
     stem = filename without any extension, e.g. "tpae135f1"
     """
-    url = f"https://pmc.ncbi.nlm.nih.gov/articles/PMC{pmc_id}/"
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=15)
-        if r.status_code != 200:
-            print(f"[PMC{pmc_id}] article page HTTP {r.status_code}")
-            return {}
-    except Exception as e:
-        print(f"[PMC{pmc_id}] article page error: {e}")
-        return {}
+    pages_to_try = [
+        f"https://pmc.ncbi.nlm.nih.gov/articles/PMC{pmc_id}/",
+        f"https://pmc.ncbi.nlm.nih.gov/articles/PMC{pmc_id}/figures/",
+    ]
 
-    html = r.text
-    blob_map = {}
-
-    # ── Pass 1: parse the inline JSON data block ──────────────
-    # PMC embeds figure metadata in a <script type="application/json"> tag.
-    # Different PMC versions use different ids/classes, so we try a few.
-    soup = BeautifulSoup(html, "lxml")
-    for script in soup.find_all("script", type="application/json"):
-        text = script.string or ""
-        if not text.strip():
+    for page_url in pages_to_try:
+        try:
+            r = requests.get(page_url, headers=HEADERS, timeout=15, allow_redirects=True)
+            if r.status_code != 200:
+                print(f"[PMC{pmc_id}] HTTP {r.status_code} for {page_url}")
+                continue
+        except Exception as e:
+            print(f"[PMC{pmc_id}] fetch error ({page_url}): {e}")
             continue
-        # Pull every CDN blob URL out of this JSON blob
-        for match in _BLOB_RE.finditer(text):
-            blob_url = match.group(0)
-            filename = blob_url.rstrip("/").split("/")[-1]
-            stem = _strip_img_ext(filename)
-            if stem and stem not in blob_map:
-                blob_map[stem] = blob_url
 
-    # ── Pass 2: regex scan the whole HTML as fallback ─────────
-    # Catches blob URLs in data-src, srcset, JS vars, etc.
-    if not blob_map:
-        for match in _BLOB_RE.finditer(html):
-            blob_url = match.group(0)
-            filename = blob_url.rstrip("/").split("/")[-1]
-            stem = _strip_img_ext(filename)
-            if stem and stem not in blob_map:
-                blob_map[stem] = blob_url
+        blob_map = _scan_html_for_blobs(r.text)
+        if blob_map:
+            print(f"[PMC{pmc_id}] blob_map: {len(blob_map)} URLs found via {page_url}")
+            return blob_map
 
-    print(f"[PMC{pmc_id}] blob_map: {len(blob_map)} URLs found")
-    return blob_map
+    print(f"[PMC{pmc_id}] blob_map: 0 URLs found")
+    return {}
 
 
 # ─────────────────────────────────────────────────────────────
@@ -313,25 +352,56 @@ def fetch_figures_from_xml(pmc_id):
 # ─────────────────────────────────────────────────────────────
 # Step 2c: Fetch blob URL from a figure's dedicated subpage
 #
-# For old-renderer PMC articles, images are loaded entirely via JS
-# so the main article HTML contains zero blob URLs.
-# Each figure has a server-rendered subpage that DOES contain them:
-#   https://pmc.ncbi.nlm.nih.gov/articles/PMC{id}/figure/{fig_id}/
+# For JS-rendered PMC articles, the main article HTML contains no blob URLs.
+# Each figure has a server-rendered subpage that DOES contain them.
+#
+# PMC uses two different identifiers as the URL path component depending on
+# the article renderer and vintage:
+#   • fig_id  — the <fig id="..."> attribute, e.g. "F1", "fig1", "koab234-F1"
+#   • stem    — the graphic href stem, e.g. "nihms-1821239-f0001"
+#
+# We try both (plus case variants and singular/plural path) so we cover all
+# renderer combinations.
 # ─────────────────────────────────────────────────────────────
 
-def _blob_from_figure_subpage(pmc_id, fig_id):
-    """Fetch the per-figure subpage and return the first blob URL found, or None."""
-    if not fig_id:
+def _blob_from_figure_subpage(pmc_id, fig_id, stem=None):
+    """
+    Fetch the per-figure subpage and return the first blob URL found, or None.
+
+    Candidate URLs are built from both fig_id and stem (when provided) so that
+    articles where the subpage key is the graphic href stem rather than the
+    XML fig id are also resolved.
+    """
+    ids_to_try = []
+    if fig_id:
+        ids_to_try.append(fig_id)
+    if stem and stem != fig_id:
+        ids_to_try.append(stem)
+
+    if not ids_to_try:
         return None
-    url = f"https://pmc.ncbi.nlm.nih.gov/articles/PMC{pmc_id}/figure/{fig_id}/"
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=10, allow_redirects=True)
-        if r.status_code != 200:
-            return None
-        m = _BLOB_RE.search(r.text)
-        return m.group(0) if m else None
-    except Exception:
-        return None
+
+    seen = set()
+    candidates = []
+    for fid in ids_to_try:
+        for fid_variant in (fid, fid.lower()):
+            for path in ("figure", "figures"):
+                url = f"https://pmc.ncbi.nlm.nih.gov/articles/PMC{pmc_id}/{path}/{fid_variant}/"
+                if url not in seen:
+                    seen.add(url)
+                    candidates.append(url)
+
+    for url in candidates:
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=10, allow_redirects=True)
+            if r.status_code != 200:
+                continue
+            blob_map = _scan_html_for_blobs(r.text)
+            if blob_map:
+                return next(iter(blob_map.values()))
+        except Exception:
+            continue
+    return None
 
 
 # ─────────────────────────────────────────────────────────────
@@ -367,6 +437,14 @@ def get_figures_for_paper(paper, max_figs=5):
         print(f"[PMC{pmc_id}] skipping — no figures in XML")
         return []
 
+    # Helper: build img-proxy URL with article-specific Referer hint.
+    # The PMC CDN checks the Referer header; using the exact article page
+    # instead of the bare domain root fixes 403s on blob URLs that were
+    # discovered via figure subpages (Path C) rather than the main article page.
+    def _proxy_url(img_url):
+        article_ref = quote(f"https://pmc.ncbi.nlm.nih.gov/articles/PMC{pmc_id}/", safe='')
+        return f"/img-proxy?url={quote(img_url, safe='')}&ref={article_ref}"
+
     figures = []
 
     if blob_map:
@@ -388,7 +466,7 @@ def get_figures_for_paper(paper, max_figs=5):
             figures.append({
                 "label":         fig["label"],
                 "caption":       fig["caption"],
-                "img_url":       f"/img-proxy?url={quote(img_url, safe='')}",
+                "img_url":       _proxy_url(img_url),
                 "pmc_id":        pmc_id,
                 "paper_title":   paper["title"],
                 "paper_url":     paper["url"],
@@ -409,7 +487,7 @@ def get_figures_for_paper(paper, max_figs=5):
             figures.append({
                 "label":         fig["label"],
                 "caption":       fig["caption"],
-                "img_url":       f"/img-proxy?url={quote(img_url, safe='')}",
+                "img_url":       _proxy_url(img_url),
                 "pmc_id":        pmc_id,
                 "paper_title":   paper["title"],
                 "paper_url":     paper["url"],
@@ -426,7 +504,7 @@ def get_figures_for_paper(paper, max_figs=5):
         target_figs = xml_figs[:max_figs]
 
         def _fetch_one(fig):
-            return fig, _blob_from_figure_subpage(pmc_id, fig["fig_id"])
+            return fig, _blob_from_figure_subpage(pmc_id, fig["fig_id"], fig["stem"])
 
         with ThreadPoolExecutor(max_workers=5) as ex:
             results = list(ex.map(_fetch_one, target_figs))
@@ -438,7 +516,7 @@ def get_figures_for_paper(paper, max_figs=5):
             figures.append({
                 "label":         fig["label"],
                 "caption":       fig["caption"],
-                "img_url":       f"/img-proxy?url={quote(blob_url, safe='')}",
+                "img_url":       _proxy_url(blob_url),
                 "pmc_id":        pmc_id,
                 "paper_title":   paper["title"],
                 "paper_url":     paper["url"],
@@ -502,6 +580,12 @@ def img_proxy():
     if not target.startswith("http"):
         return "", 403
 
+    # Use the article-specific Referer when provided; fall back to domain root.
+    # The PMC CDN validates Referer and returns 403 if it doesn't match the
+    # article that owns the image — especially for blob URLs found via subpages.
+    raw_ref = request.args.get("ref", "").strip()
+    referer = unquote(raw_ref) if raw_ref else "https://pmc.ncbi.nlm.nih.gov/"
+
     if target in _img_cache:
         data, ct = _img_cache[target]
         return Response(data, content_type=ct,
@@ -509,7 +593,7 @@ def img_proxy():
     try:
         r = requests.get(
             target,
-            headers={**HEADERS, "Referer": "https://pmc.ncbi.nlm.nih.gov/"},
+            headers={**HEADERS, "Referer": referer},
             timeout=20, stream=True, allow_redirects=True,
         )
         if r.status_code != 200:

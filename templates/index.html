@@ -257,15 +257,7 @@
             margin-bottom: 6px;
         }
 
-        .card-body a {
-            display: inline-block;
-            margin-top: 4px;
-            font-size: 11px;
-            color: #5b45a8;
-            font-weight: 500;
-            text-decoration: none;
-        }
-        .card-body a:hover { text-decoration: underline; }
+
 
         /* ── LOADING ── */
         #loading {
@@ -716,11 +708,7 @@ function createCard(fig, index) {
     caption.textContent = fig.caption || 'No caption available.';
     body.appendChild(caption);
 
-    const link = document.createElement('a');
-    link.href = fig.paper_url || '#';
-    link.target = '_blank';
-    link.textContent = `↗ ${fig.paper_title || 'View paper'}`;
-    body.appendChild(link);
+
 
     card.appendChild(imgWrap);
     card.appendChild(body);
