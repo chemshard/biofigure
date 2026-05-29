@@ -639,24 +639,22 @@ async function doSearch(query) {
         }
 
         // group figures by paper
-		const byPaper = {};
-		data.figures.forEach(fig => {
-		    const key = fig.pmc_id;
-		    if (!byPaper[key]) byPaper[key] = { paper: null, figs: [] };
-		    byPaper[key].paper = {
-		        title: fig.paper_title,
-		        url: fig.paper_url,
-		        journal: fig.paper_journal,
-		        abstract: fig.paper_abstract
-		    };
-		    byPaper[key].figs.push(fig);
-		});
+        // Build paper lookup from data.papers (has title, url, journal, abstract)
+        const paperById = {};
+        (data.papers || []).forEach(p => { paperById[p.pmc_id] = p; });
 
-		let figIndex = 0;
-		Object.values(byPaper).forEach(group => {
-		    resultsGrid.appendChild(createPaperBlock(group.paper, group.figs, figIndex));
-		    figIndex += group.figs.length;
-		});
+        const byPaper = {};
+        data.figures.forEach(fig => {
+            const key = fig.pmc_id;
+            if (!byPaper[key]) byPaper[key] = { paper: paperById[key] || {}, figs: [] };
+            byPaper[key].figs.push(fig);
+        });
+
+        let figIndex = 0;
+        Object.values(byPaper).forEach(group => {
+            resultsGrid.appendChild(createPaperBlock(group.paper, group.figs, figIndex));
+            figIndex += group.figs.length;
+        });
 
     } catch (err) {
         loading.style.display = 'none';

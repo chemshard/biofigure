@@ -6,6 +6,7 @@ import requests
 import threading
 import time
 import re
+import random
 
 app = Flask(__name__)
 
@@ -95,9 +96,9 @@ def search_pmc(query, max_results=8):
             params={
                 "db":      "pmc",
                 "term":    f"{query}[Title/Abstract] AND open access[filter]",
-                "retmax":  max_results * 3,
+                "retmax":  50,          # fetch a large pool to randomise from
                 "retmode": "json",
-                "sort":    "relevance",
+                "sort":    "relevance", # keep relevance so pool stays on-topic
             },
         )
         r.raise_for_status()
@@ -108,6 +109,10 @@ def search_pmc(query, max_results=8):
 
     if not ids:
         return []
+
+    # Shuffle so each search surfaces different articles from the relevant pool
+    random.shuffle(ids)
+    ids = ids[: max_results * 3]   # trim after shuffle
 
     try:
         r = ncbi_get(
@@ -159,7 +164,11 @@ def search_pmc(query, max_results=8):
 # ─────────────────────────────────────────────────────────────
 
 EFETCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
-_BLOB_RE   = re.compile(r'https://cdn\.ncbi\.nlm\.nih\.gov/pmc/blobs/[^\s"\'<>]+\.(?:jpg|jpeg|png|gif|webp)', re.I)
+_BLOB_RE   = re.compile(
+    r'https?://cdn\.ncbi\.nlm\.nih\.gov/pmc/blobs/'
+    r'[0-9a-f]{4}/\d+/[0-9a-f]{8,}/[^\s"\'<>&?#]+',
+    re.I,
+)
 
 
 def _strip_img_ext(s):
@@ -228,7 +237,12 @@ def scrape_blob_urls(pmc_id):
 # ─────────────────────────────────────────────────────────────
 
 def fetch_figures_from_xml(pmc_id):
-    """Return list of {fig_id, stem, label, caption} from eFetch XML."""
+    """Return list of {fig_id, stem, direct_url, label, caption} from eFetch XML.
+
+    direct_url is populated when the graphic href is already a full CDN blob URL.
+    Many articles embed it directly in the XML — no scraping or subpage needed.
+    stem is always set for blob_map matching (PATH A).
+    """
     try:
         r = ncbi_get(
             EFETCH_URL,
@@ -251,7 +265,7 @@ def fetch_figures_from_xml(pmc_id):
         if fig.find_parent("fig"):
             continue
 
-        fig_id  = fig.get("id", "")          # e.g. "F1", "fig1", "ppat-1000133-g001"
+        fig_id = fig.get("id", "")   # e.g. "F1", "fig1", "RSOB180246F1"
 
         label_tag = fig.find("label")
         label = label_tag.get_text(strip=True) if label_tag else ""
@@ -273,15 +287,25 @@ def fetch_figures_from_xml(pmc_id):
         if not href:
             continue
 
-        # Normalise href to a bare stem (strip path and any extension)
+        # Preserve full URL when the href is already a CDN blob URL.
+        # Many articles (especially those whose HTML has no inline JSON) embed
+        # the complete blob URL directly in the eFetch XML graphic element.
+        direct_url = None
         if href.startswith("http"):
-            filename = href.rstrip("/").split("/")[-1]
-            stem = _strip_img_ext(filename)
+            direct_url = href
+            filename   = href.rstrip("/").split("/")[-1]
+            stem       = _strip_img_ext(filename)
         else:
             stem = _strip_img_ext(href.split("/")[-1])
 
         if stem:
-            results.append({"fig_id": fig_id, "stem": stem, "label": label, "caption": caption})
+            results.append({
+                "fig_id":     fig_id,
+                "stem":       stem,
+                "direct_url": direct_url,
+                "label":      label,
+                "caption":    caption,
+            })
 
     return results
 
@@ -313,15 +337,19 @@ def _blob_from_figure_subpage(pmc_id, fig_id):
 # ─────────────────────────────────────────────────────────────
 # Step 2 (combined): blob URLs + figure metadata → figure list
 #
-# PATH A — New renderer (post ~2022):
-#   Main article HTML has blob URLs in <script type="application/json">.
-#   scrape_blob_urls() finds them → blob_map non-empty.
+# Three paths, tried in priority order:
+#
+# PATH A — HTML inline JSON has blob URLs (new renderer, post ~2022):
+#   scrape_blob_urls() finds them in <script type="application/json">.
 #   Match blob_map stems against eFetch XML figure stems.
 #
-# PATH B — Old renderer (classic PMC):
-#   Main article HTML loads images 100% via JS → blob_map empty.
-#   For each figure, fetch its dedicated subpage to get the blob URL.
-#   /articles/PMC{id}/figure/{fig_id}/ is server-rendered and has the URL.
+# PATH B — eFetch XML graphic href is already a full CDN URL:
+#   Many articles embed the complete blob URL directly in the XML.
+#   We preserved it as direct_url — use it immediately, no scraping needed.
+#
+# PATH C — Last resort: fetch each figure's dedicated subpage:
+#   /articles/PMC{id}/figure/{fig_id}/ is server-rendered and has the blob URL.
+#   Only used when both blob_map is empty and direct_url is None.
 # ─────────────────────────────────────────────────────────────
 
 def get_figures_for_paper(paper, max_figs=5):
@@ -330,10 +358,10 @@ def get_figures_for_paper(paper, max_figs=5):
 
     # Run HTML scrape and eFetch XML in parallel
     with ThreadPoolExecutor(max_workers=2) as ex:
-        f_blobs   = ex.submit(scrape_blob_urls, pmc_id)
-        f_xml     = ex.submit(fetch_figures_from_xml, pmc_id)
-        blob_map  = f_blobs.result()
-        xml_figs  = f_xml.result()
+        f_blobs  = ex.submit(scrape_blob_urls, pmc_id)
+        f_xml    = ex.submit(fetch_figures_from_xml, pmc_id)
+        blob_map = f_blobs.result()
+        xml_figs = f_xml.result()
 
     if not xml_figs:
         print(f"[PMC{pmc_id}] skipping — no figures in XML")
@@ -342,12 +370,12 @@ def get_figures_for_paper(paper, max_figs=5):
     figures = []
 
     if blob_map:
-        # ── PATH A: match blob_map stems to XML figure stems ──────
+        # ── PATH A: HTML inline JSON → match stems ────────────────
+        path = "A"
         for fig in xml_figs:
-            stem = fig["stem"]
+            stem    = fig["stem"]
             img_url = blob_map.get(stem)
 
-            # Fuzzy prefix/suffix match for minor stem variations
             if not img_url:
                 for k, v in blob_map.items():
                     if k.startswith(stem) or stem.startswith(k):
@@ -369,15 +397,36 @@ def get_figures_for_paper(paper, max_figs=5):
             if len(figures) >= max_figs:
                 break
 
+    elif any(f["direct_url"] for f in xml_figs):
+        # ── PATH B: full CDN URL already in eFetch XML ────────────
+        path = "B"
+        direct_count = sum(1 for f in xml_figs if f["direct_url"])
+        print(f"[PMC{pmc_id}] PATH B: {direct_count} direct URLs in XML")
+        for fig in xml_figs:
+            img_url = fig["direct_url"]
+            if not img_url:
+                continue
+            figures.append({
+                "label":         fig["label"],
+                "caption":       fig["caption"],
+                "img_url":       f"/img-proxy?url={quote(img_url, safe='')}",
+                "pmc_id":        pmc_id,
+                "paper_title":   paper["title"],
+                "paper_url":     paper["url"],
+                "paper_journal": jy,
+            })
+            if len(figures) >= max_figs:
+                break
+
     else:
-        # ── PATH B: fetch each figure's subpage for its blob URL ──
-        # Parallelise the per-figure subpage fetches (no NCBI rate limit — these
-        # are regular PMC web pages, not Entrez API calls)
+        # ── PATH C: fetch each figure's dedicated subpage ─────────
+        # /articles/PMC{id}/figure/{fig_id}/ is server-rendered and
+        # contains the blob URL in static HTML.
+        path = "C"
         target_figs = xml_figs[:max_figs]
 
         def _fetch_one(fig):
-            blob_url = _blob_from_figure_subpage(pmc_id, fig["fig_id"])
-            return fig, blob_url
+            return fig, _blob_from_figure_subpage(pmc_id, fig["fig_id"])
 
         with ThreadPoolExecutor(max_workers=5) as ex:
             results = list(ex.map(_fetch_one, target_figs))
@@ -396,38 +445,48 @@ def get_figures_for_paper(paper, max_figs=5):
                 "paper_journal": jy,
             })
 
-    print(f"[PMC{pmc_id}] PATH {'A' if blob_map else 'B'} → {len(figures)} figures")
+    print(f"[PMC{pmc_id}] PATH {path} → {len(figures)} figures")
     return figures
 
 # ─────────────────────────────────────────────────────────────
 # Step 3: Orchestrate
 # ─────────────────────────────────────────────────────────────
 
-def fetch_figures_for_query(query, max_papers=6, max_figs_per_paper=5):
-    papers = search_pmc(query, max_results=max_papers * 2)
+def fetch_figures_for_query(query, max_papers=5, max_figs_per_paper=5):
+    papers = search_pmc(query, max_results=max_papers * 3)
     if not papers:
         return [], []
 
     all_papers  = []
     all_figures = []
 
-    # Reduced worker count to avoid hammering NCBI
-    with ThreadPoolExecutor(max_workers=3) as ex:
-        futures = {ex.submit(get_figures_for_paper, p, max_figs_per_paper): p for p in papers}
-        for future in as_completed(futures):
-            paper = futures[future]
-            try:
-                figs = future.result()
-            except Exception as e:
-                print(f"[future error] {e}")
-                continue
-            if not figs:
-                continue
-            all_papers.append(paper)
-            all_figures.extend(figs)
-            if len(all_papers) >= max_papers:
-                break
+    # Process papers in small batches. Each batch runs concurrently, but we
+    # don't start the next batch until we know whether we still need more papers.
+    # This avoids firing off 20+ fetches when 5 succeed in the first batch.
+    batch_size = 3
+    i = 0
+    while i < len(papers) and len(all_papers) < max_papers:
+        batch = papers[i : i + batch_size]
+        i += batch_size
 
+        with ThreadPoolExecutor(max_workers=batch_size) as ex:
+            futures = {ex.submit(get_figures_for_paper, p, max_figs_per_paper): p for p in batch}
+            for future in as_completed(futures):
+                try:
+                    figs = future.result()
+                except Exception as e:
+                    print(f"[future error] {e}")
+                    continue
+                if not figs:
+                    continue
+                all_papers.append(futures[future])
+                all_figures.extend(figs)
+                if len(all_papers) >= max_papers:
+                    for f in futures:
+                        f.cancel()
+                    break
+
+    print(f"[done] {len(all_papers)} papers, {len(all_figures)} figures total")
     return all_papers, all_figures
 
 # ─────────────────────────────────────────────────────────────
