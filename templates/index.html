@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioFigure</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/x-icon"       href="/static/favicon.ico">
+	<link rel="icon" type="image/png" sizes="16x16"   href="/static/favicon-16x16.png">
+	<link rel="icon" type="image/png" sizes="32x32"   href="/static/favicon-32x32.png">
+	<link rel="apple-touch-icon" sizes="180x180"      href="/static/apple-touch-icon.png">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'DM Sans', 'Segoe UI', sans-serif;
+            background: #f5f3fc;
+            color: #2c2c2c;
+            min-height: 100vh;
+        }
+		
+		.card-abstract {
+    	margin-top: 10px;
+    	padding-top: 10px;
+    	border-top: 1px solid #d8d0f0;
+    	font-size: 11px;
+    	line-height: 1.5;
+    	color: #6a6055;
+
+	    display: -webkit-box;
+	    -webkit-line-clamp: 6;
+    	-webkit-box-orient: vertical;
+    	overflow: hidden;
+		}
+		
+        /* ── HEADER ── */
+        header {
+            background: #5b45a8;
+            padding: 2rem 2.5rem 1.5rem;
+        }
+        header h1 {
+            font-family: Georgia, serif;
+            font-size: 2rem;
+            color: #e8e0ef;
+            font-weight: 500;
+            margin-bottom: 0.2rem;
+        }
+        header p {
+            font-size: 13px;
+            color: #c4b8f0;
+            margin-bottom: 1.25rem;
+        }
+        .header-badges {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+        .badge {
+            font-size: 11px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-weight: 500;
+        }
+        .badge-green  { background: rgba(255,255,255,0.1); color: #c4b8f0; border: 1px solid rgba(196,184,240,0.4); }
+        .badge-yellow { background: rgba(255,209,102,0.12); color: #d4a843; border: 1px solid rgba(212,168,67,0.3); }
+
+        /* ── SEARCH ROW ── */
+        .search-row {
+            display: flex;
+            gap: 10px;
+            padding: 1.25rem 2.5rem 0.75rem;
+            background: #f5f3fc;
+        }
+        .search-row input {
+            flex: 1;
+            height: 38px;
+            border: 1px solid #d4c9b8;
+            border-radius: 6px;
+            background: white;
+            padding: 0 14px;
+            font-size: 14px;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .search-row input:focus { border-color: #5b45a8; }
+        .search-row input::placeholder { color: #b0a8d0; }
+        .search-row button {
+            height: 38px;
+            padding: 0 20px;
+            background: #5b45a8;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: inherit;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background 0.15s;
+            white-space: nowrap;
+        }
+        .search-row button:hover { background: #3d2d8a; }
+        .search-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* ── TOPIC CHIPS ── */
+        .topic-chips-wrap {
+            padding: 0 2.5rem 0.75rem;
+            background: #f5f3fc;
+        }
+        .chips-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #9080c0;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+        }
+        .topic-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+        .chip {
+            padding: 5px 14px;
+            border: 1px solid #c8bef0;
+            border-radius: 20px;
+            background: white;
+            font-size: 12px;
+            font-family: inherit;
+            color: #3d2d8a;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .chip:hover { background: #5b45a8; color: white; border-color: #5b45a8; }
+
+        /* ── RESULTS META ── */
+        #stats {
+            padding: 0.5rem 2.5rem 0.5rem;
+            font-size: 12px;
+            color: #7a6fa8;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            display: none;
+        }
+
+        /* ── SOURCE PAPERS STRIP ── */
+        #papers-strip {
+            display: none;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+            padding: 0 2.5rem 0.75rem;
+        }
+        .papers-strip-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #9080c0;
+            font-weight: 500;
+        }
+        .paper-pill {
+            font-size: 11px;
+            padding: 3px 10px;
+            background: white;
+            border: 1px solid #c8bef0;
+            border-radius: 20px;
+            color: #5b45a8;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.15s;
+            max-width: 280px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .paper-pill:hover { background: #5b45a8; color: #ede9f8; border-color: #5b45a8; }
+
+        /* ── GRID ── */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 14px;
+            padding: 0 2.5rem 2.5rem;
+        }
+
+        /* ── CARDS ── */
+        .card {
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 1px solid #d8d0f0;
+            transition: box-shadow 0.2s, transform 0.2s;
+            animation: fadeUp 0.35s ease both;
+        }
+        .card:hover {
+            box-shadow: 0 6px 24px rgba(91,69,168,0.14);
+            transform: translateY(-2px);
+        }
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(14px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .card-img-wrap {
+            height: 160px;
+            background: #ede9f8;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: zoom-in;
+            position: relative;
+        }
+        .card-img-wrap img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+            transition: transform 0.3s;
+            background: #ede9f8;
+        }
+        .card:hover .card-img-wrap img { transform: scale(1.04); }
+
+        .fig-label-tag {
+            position: absolute;
+            top: 0.4rem; left: 0.4rem;
+            background: rgba(61,45,138,0.8);
+            color: #e8e4f8;
+            font-size: 10px;
+            padding: 2px 7px;
+            border-radius: 10px;
+            font-weight: 500;
+        }
+
+        .no-img {
+            color: #a09080;
+            font-size: 12px;
+            text-align: center;
+            line-height: 1.7;
+        }
+
+        .card-body { padding: 10px 12px 12px; }
+
+        .card-caption {
+            font-size: 12px;
+            color: #3a3060;
+            line-height: 1.55;
+            margin-bottom: 8px;
+            display: -webkit-box;
+            -webkit-line-clamp: 4;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .card-journal {
+            font-size: 10px;
+            color: #9080c0;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 6px;
+        }
+
+        .card-body a {
+            display: inline-block;
+            margin-top: 4px;
+            font-size: 11px;
+            color: #5b45a8;
+            font-weight: 500;
+            text-decoration: none;
+        }
+        .card-body a:hover { text-decoration: underline; }
+
+        /* ── LOADING ── */
+        #loading {
+            display: none;
+            text-align: center;
+            padding: 4rem 2.5rem;
+        }
+        .spinner {
+            width: 36px; height: 36px;
+            border: 2px solid #d8d0f0;
+            border-top-color: #5b45a8;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text { font-size: 13px; color: #8a7f70; }
+        .loading-sub  { font-size: 11px; color: #b0a090; margin-top: 0.3rem; }
+
+        /* ── EMPTY / ERROR ── */
+        #empty-state {
+            display: none;
+            text-align: center;
+            padding: 4rem 2.5rem;
+        }
+        .empty-icon  { font-size: 2.5rem; margin-bottom: 0.75rem; opacity: 0.45; }
+        .empty-title { font-family: Georgia, serif; font-size: 1.2rem; color: #5b45a8; margin-bottom: 0.4rem; }
+        .empty-sub   { font-size: 13px; color: #8a7f70; }
+
+        #error-state {
+            display: none;
+            margin: 0 2.5rem 1rem;
+            padding: 0.9rem 1.1rem;
+            background: #fdf0ec;
+            border: 1px solid #e8c0b0;
+            border-left: 3px solid #c05030;
+            border-radius: 0 6px 6px 0;
+        }
+        .error-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #c05030; font-weight: 500; margin-bottom: 3px; }
+        .error-msg   { font-size: 13px; color: #5a3028; }
+
+        /* ── MODAL ── */
+        #modal {
+            display: none;
+            position: fixed; inset: 0;
+            background: rgba(20, 35, 25, 0.82);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(4px);
+            padding: 2rem;
+        }
+        #modal.open { display: flex; }
+
+        .modal-inner {
+            max-width: 860px; max-height: 90vh;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex; flex-direction: column;
+            width: 100%;
+            border: 1px solid #e2d9cc;
+        }
+        .modal-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0.75rem 1.25rem;
+            background: #5b45a8;
+        }
+        .modal-label { font-size: 13px; color: #c4b8f0; font-weight: 500; }
+        .modal-close {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.18);
+            color: #e8e0ef;
+            width: 28px; height: 28px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.15s;
+        }
+        .modal-close:hover { background: rgba(255,255,255,0.2); }
+
+        .modal-img-wrap {
+            overflow: auto; flex: 1;
+            display: flex; align-items: center; justify-content: center;
+            padding: 1.5rem;
+            background: #ede9f8;
+        }
+        .modal-img-wrap img {
+            max-width: 100%; max-height: 55vh;
+            object-fit: contain;
+            border-radius: 4px;
+        }
+        .modal-caption {
+            padding: 0.9rem 1.4rem;
+            border-top: 1px solid #d8d0f0;
+            font-size: 13px;
+            color: #3a3060;
+            max-height: 120px;
+            overflow-y: auto;
+            line-height: 1.6;
+        }
+        .modal-paper {
+            padding: 0.55rem 1.4rem;
+            border-top: 1px solid #d8d0f0;
+            font-size: 11px;
+            background: #f5f3fc;
+        }
+        .modal-paper a { color: #5b45a8; text-decoration: none; font-weight: 500; }
+        .modal-paper a:hover { text-decoration: underline; }
+
+        @media (max-width: 700px) {
+            header, .search-row, .topic-chips-wrap,
+            #papers-strip, #stats, .grid, #error-state { padding-left: 1.25rem; padding-right: 1.25rem; }
+            .grid { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 480px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+        
+        /* ── PAPER BLOCKS ── */
+		.paper-block {
+		    margin: 0 2.5rem 2rem;
+		    border: 1px solid #d8d0f0;
+		    border-radius: 12px;
+		    background: white;
+		    overflow: hidden;
+		}
+		.paper-block-header {
+		    background: #5b45a8;
+		    color: #e8e0ef;
+		    padding: 12px 16px;
+		}
+		.paper-block-title {
+		    font-size: 13px;
+		    font-weight: 500;
+		    margin-bottom: 4px;
+		}
+		.paper-block-meta {
+		    font-size: 11px;
+		    color: #c4b8f0;
+		}
+		.paper-block-abstract {
+		    padding: 10px 16px 0 16px;
+		    font-size: 12px;
+		    color: #3a3060;
+		    line-height: 1.6;
+		}
+		.paper-block-abstract p {
+		    display: -webkit-box;
+		    -webkit-line-clamp: 4;
+		    -webkit-box-orient: vertical;
+		    overflow: hidden;
+		    margin: 0;
+		}
+		.paper-block-abstract p.expanded {
+		    display: block;
+		    -webkit-line-clamp: unset;
+		}
+		.abstract-toggle {
+		    display: inline-block;
+		    margin: 4px 0 10px 0;
+		    font-size: 11px;
+		    color: #5b45a8;
+		    cursor: pointer;
+		    font-weight: 500;
+		    border: none;
+		    background: none;
+		    padding: 0;
+		    font-family: inherit;
+		}
+.abstract-toggle:hover { text-decoration: underline; }
+		.paper-block-grid {
+		    display: grid;
+		    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+		    gap: 12px;
+		    padding: 14px;
+		}
+    </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+    <h1>BioFigure</h1>
+    <p>Research figures from open-access papers — curated for IBO preparation</p>
+    <div class="header-badges">
+        <span class="badge badge-green">EggTrees Inc.</span>
+        <span class="badge badge-yellow">IBO-Aligned Topics</span>
+    </div>
+</header>
+
+<!-- SEARCH -->
+<div class="search-row">
+    <input type="text" id="search-input"
+           placeholder="Search a biology topic — e.g. photosynthesis, DNA replication, osmoregulation…"
+           autocomplete="off">
+    <button id="search-btn">Search</button>
+</div>
+
+<!-- TOPIC CHIPS -->
+<div class="topic-chips-wrap">
+    <div class="chips-label">Quick select</div>
+    <div class="topic-chips">
+        {% for topic in topics %}
+        <span class="chip" onclick="quickSearch('{{ topic }}')">{{ topic }}</span>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- STATS -->
+<div id="stats"></div>
+
+<!-- ERROR -->
+<div id="error-state">
+    <div class="error-title">Error</div>
+    <div class="error-msg" id="error-msg"></div>
+</div>
+
+<!-- LOADING -->
+<div id="loading">
+    <div class="spinner"></div>
+    <div class="loading-text">Searching Europe PMC…</div>
+    <div class="loading-sub">Fetching open-access figures from peer-reviewed papers</div>
+</div>
+
+<!-- EMPTY -->
+<div id="empty-state">
+    <div class="empty-icon">🔬</div>
+    <div class="empty-title">No figures found</div>
+    <div class="empty-sub">Try a broader term or pick a topic above</div>
+</div>
+
+<!-- SOURCE PAPERS -->
+<div id="papers-strip">
+    <span class="papers-strip-label">Sources</span>
+</div>
+
+<!-- GRID -->
+<div id="results-grid"></div>
+
+<!-- MODAL -->
+<div id="modal">
+    <div class="modal-inner">
+        <div class="modal-header">
+            <span class="modal-label" id="modal-label">Figure</span>
+            <button class="modal-close" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-img-wrap">
+            <img id="modal-img" src="" alt="">
+        </div>
+        <div class="modal-caption" id="modal-caption"></div>
+        <div class="modal-paper"  id="modal-paper"></div>
+    </div>
+</div>
+
+<script>
+const searchInput = document.getElementById('search-input');
+const searchBtn   = document.getElementById('search-btn');
+const resultsGrid = document.getElementById('results-grid');
+const loading     = document.getElementById('loading');
+const emptyState  = document.getElementById('empty-state');
+const errorState  = document.getElementById('error-state');
+const statsEl     = document.getElementById('stats');
+const papersStrip = document.getElementById('papers-strip');
+
+function createPaperBlock(paper, figs, startIndex) {
+    const block = document.createElement('div');
+    block.className = 'paper-block';
+
+    // header
+    const header = document.createElement('div');
+    header.className = 'paper-block-header';
+    header.innerHTML = `
+        <div class="paper-block-title">
+            <a href="${paper.url}" target="_blank" style="color:#e8e4f8;text-decoration:none;">
+                ↗ ${paper.title || 'Untitled'}
+            </a>
+        </div>
+        <div class="paper-block-meta">${paper.journal || ''}</div>`;
+    block.appendChild(header);
+
+    // abstract
+    if (paper.abstract && paper.abstract !== 'No abstract available.') {
+	    const absWrap = document.createElement('div');
+	    absWrap.className = 'paper-block-abstract';
+
+	    const absText = document.createElement('p');
+	    absText.textContent = paper.abstract;
+	    absWrap.appendChild(absText);
+
+	    const toggle = document.createElement('button');
+	    toggle.className = 'abstract-toggle';
+	    toggle.textContent = 'Show more';
+	    toggle.addEventListener('click', () => {
+	        const expanded = absText.classList.toggle('expanded');
+	        toggle.textContent = expanded ? 'Show less' : 'Show more';
+	    });
+	    absWrap.appendChild(toggle);
+
+	    block.appendChild(absWrap);
+
+	    // only show toggle if text is actually long enough to be clamped
+	    absText.style.visibility = 'hidden';
+	    requestAnimationFrame(() => {
+	        absText.style.visibility = '';
+	        if (absText.scrollHeight <= absText.clientHeight) {
+	            toggle.style.display = 'none';
+	        }
+	    });
+	}
+
+    // figure grid
+    const grid = document.createElement('div');
+    grid.className = 'paper-block-grid';
+    figs.forEach((fig, i) => grid.appendChild(createCard(fig, startIndex + i)));
+    block.appendChild(grid);
+
+    return block;
+}
+
+function quickSearch(topic) {
+    searchInput.value = topic;
+    doSearch(topic);
+}
+
+searchBtn.addEventListener('click', () => {
+    const q = searchInput.value.trim();
+    if (q) doSearch(q);
+});
+searchInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { const q = searchInput.value.trim(); if (q) doSearch(q); }
+});
+
+async function doSearch(query) {
+    // reset
+    resultsGrid.innerHTML = '';
+    // remove old paper pills (keep label span)
+    [...papersStrip.querySelectorAll('a')].forEach(a => a.remove());
+    papersStrip.style.display = 'none';
+    emptyState.style.display  = 'none';
+    errorState.style.display  = 'none';
+    statsEl.style.display     = 'none';
+    loading.style.display     = 'block';
+    searchBtn.disabled        = true;
+
+    try {
+        const res  = await fetch(`/search?q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        loading.style.display = 'none';
+        searchBtn.disabled    = false;
+
+        if (data.error) { showError(data.error); return; }
+        if (!data.figures || data.figures.length === 0) { emptyState.style.display = 'block'; return; }
+
+        // stats
+        statsEl.style.display = 'block';
+        statsEl.textContent   = `${data.total_figures} figure${data.total_figures !== 1 ? 's' : ''} · ${data.total_papers} paper${data.total_papers !== 1 ? 's' : ''} · "${query}"`;
+
+        // papers strip
+        if (data.papers && data.papers.length) {
+            papersStrip.style.display = 'flex';
+            data.papers.forEach(p => {
+                const a = document.createElement('a');
+                a.className = 'paper-pill';
+                a.href = p.url; a.target = '_blank';
+                a.title = p.title;
+                a.textContent = `↗ ${p.title}`;
+                papersStrip.appendChild(a);
+            });
+        }
+
+        // group figures by paper
+		const byPaper = {};
+		data.figures.forEach(fig => {
+		    const key = fig.pmc_id;
+		    if (!byPaper[key]) byPaper[key] = { paper: null, figs: [] };
+		    byPaper[key].paper = {
+		        title: fig.paper_title,
+		        url: fig.paper_url,
+		        journal: fig.paper_journal,
+		        abstract: fig.paper_abstract
+		    };
+		    byPaper[key].figs.push(fig);
+		});
+
+		let figIndex = 0;
+		Object.values(byPaper).forEach(group => {
+		    resultsGrid.appendChild(createPaperBlock(group.paper, group.figs, figIndex));
+		    figIndex += group.figs.length;
+		});
+
+    } catch (err) {
+        loading.style.display = 'none';
+        searchBtn.disabled    = false;
+        showError('Network error — make sure the Flask server is running.');
+    }
+}
+
+function showError(msg) {
+    errorState.style.display = 'block';
+    document.getElementById('error-msg').textContent = msg;
+}
+
+function createCard(fig, index) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.animationDelay = `${index * 0.06}s`;
+
+    // image
+    const imgWrap = document.createElement('div');
+    imgWrap.className = 'card-img-wrap';
+    imgWrap.addEventListener('click', () => openModal(fig));
+
+    if (fig.img_url) {
+        const img = document.createElement('img');
+        img.src = fig.img_url;
+        img.alt = fig.label || 'Figure';
+        img.loading = 'lazy';
+        img.onerror = () => {
+            imgWrap.innerHTML = '<div class="no-img">🖼️<br>Image unavailable<br><small>Open paper to view</small></div>';
+            imgWrap.style.cursor = 'default';
+        };
+        imgWrap.appendChild(img);
+    } else {
+        imgWrap.innerHTML = '<div class="no-img">🖼️<br>No image URL</div>';
+        imgWrap.style.cursor = 'default';
+    }
+
+    if (fig.label) {
+        const lbl = document.createElement('div');
+        lbl.className = 'fig-label-tag';
+        lbl.textContent = fig.label;
+        imgWrap.appendChild(lbl);
+    }
+
+    // body
+    const body = document.createElement('div');
+    body.className = 'card-body';
+
+    if (fig.paper_journal) {
+        const j = document.createElement('div');
+        j.className = 'card-journal';
+        j.textContent = fig.paper_journal;
+        body.appendChild(j);
+    }
+
+    const caption = document.createElement('div');
+    caption.className = 'card-caption';
+    caption.textContent = fig.caption || 'No caption available.';
+    body.appendChild(caption);
+
+    const link = document.createElement('a');
+    link.href = fig.paper_url || '#';
+    link.target = '_blank';
+    link.textContent = `↗ ${fig.paper_title || 'View paper'}`;
+    body.appendChild(link);
+
+    card.appendChild(imgWrap);
+    card.appendChild(body);
+    return card;
+}
+
+function openModal(fig) {
+    if (!fig.img_url) return;
+    document.getElementById('modal-img').src = fig.img_url;
+    document.getElementById('modal-label').textContent = fig.label || 'Figure';
+    document.getElementById('modal-caption').textContent = fig.caption || '';
+    const p = document.getElementById('modal-paper');
+    p.innerHTML = fig.paper_url
+        ? `<a href="${fig.paper_url}" target="_blank">↗ ${fig.paper_title || 'View source paper'}</a>`
+        : '';
+    document.getElementById('modal').classList.add('open');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+    document.getElementById('modal').classList.remove('open');
+    document.getElementById('modal-img').src = '';
+    document.body.style.overflow = '';
+}
+
+document.getElementById('modal').addEventListener('click', e => {
+    if (e.target === document.getElementById('modal')) closeModal();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+</script>
+</body>
+</html>
