@@ -7,9 +7,20 @@ import threading
 import time
 import re
 import random
+from datetime import datetime
+import time
+import psutil
 
 app = Flask(__name__)
 
+@app.route('/healthz')
+def health_check():
+    return {
+        'status': 'ok',
+        'timestamp': datetime.now().isoformat(),
+        'uptime': time.time() - psutil.boot_time(),
+        'memory': psutil.virtual_memory()._asdict()
+    }
 # ─────────────────────────────────────────────────────────────
 # Config
 # ─────────────────────────────────────────────────────────────
