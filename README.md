@@ -1,7 +1,7 @@
-# BioFig — IBO Figure Explorer
+# BioFigure
 
 A Flask web app that pulls biology research paper figures and captions from
-**Europe PMC** open-access articles. No API key required — completely free.
+**Europe PMC** open-access articles. No API key required, completely free.
 
 ## Features
 - Searches Europe PMC (covers all of PubMed/PMC) for open-access papers
